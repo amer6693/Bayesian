@@ -1,0 +1,466 @@
+---
+title: "BATTLE OF STATISTICAL BELIEFS"
+output:
+  html_document:
+    code_folding: hide
+---
+## BAYESIAN VS FREQUENTIST
+## CANDIDATE NUMBER : 39637 
+
+<br>  
+
+******
+
+<center><font size ="5"><u>__CONTENT__</u></font></center>
+
+#### [1. Introduction](#intro)  
+#### [2. Exploring Data & Cleanup](#cleaning)  
+#### [3. Models](#modeling)  
+#### [4. Comparing Model Errors & Summary](#errors)  
+#### [5. References](#refer)  
+
+<br>
+
+******
+
+# Introduction {#intro}   
+
+The main focus of this analysis is to predict someone's income based on multiple attributes/variables (categorical and continuous) available in "1994 Adult Census Income Data Set" that is publicly available in the UCI Machine Learning Repository. 
+ 
+My task is to come up with different models that have been taught throughout Bayesian Inference course, compare these various models using both Frequentist and Bayesian, and see which comes out on top.
+
+<br>
+
+******
+
+
+
+# Exploring Data & Cleanup {#cleaning}
+
+My data contains a sample of 48842 instances, with 15 different attributes (listed below). 
+First off, take a look at the attributes that are available in the dataset:
+
+```{r}
+adult <- read.csv("adult.csv")
+colnames(adult)
+dim(adult)
+```
+## Listing of attributes:
+
+<style>
+.column-left{
+  float: left;
+  width: 50%;
+  text-align: left;
+}
+.column-right{
+  float: right;
+  width: 50%;
+  text-align: left;
+}
+</style>
+
+<div class="column-left">
+<font size ="4"><center><u>Continuous Variables</u></center></font>
+**1.**  __`age`__  
+**2.** __`fnlwgt`__: Final weight. Number of people the census believes the entry represents   
+**3.** __`educational-num`__: Highest level of education achieved (numerical)  
+**4.** __`capital-gain`__: Capital gains for an individual  
+**5.** __`capital-loss`__: Capital loss for an individual  
+**6.** __`hours-per-week`__: Hours individual has reported to work per week 
+</div>
+
+<div class="column-right">
+<font size ="4"><center><u>Categorical Variables</u></center></font>
+**1.** __`workclass`__: Represents the employment status of individual e.g Private, Federal-gov   
+**2.** __`education`___: The highest level of education by an individual  
+**3.** __`marital-status`__: Marital status of individual  
+**4.** __`occupation`__: General type of occupation of an individual  
+**5.** __`relationship`__: Represents what this individual is relative to others  
+**6.** __`race`__: Race/ethnicity of an individual  
+**7.** __`gender`__: Gender (Male, Female)  
+**8.** __`native-country`__: Country of origin for an individual  
+
+</div>
+<br>
+<font size ="4"><center><u>Target Variable </u></center></font>
+<center> __`income`__  >50K and <=50K </center>
+
+<br>
+
+## Cleanup & Data Exploration
+
+Looking at the raw data, it does need to be organised and cleaned up, just like my room during the Great Lockdown. Cleaning up processes involves:   
+  1. Getting rid of unknown values with entries '?' in "workclass", "occupation" and "native.country"   
+  2. Changing income variables to binary where I assign the value 1 if more than 50k and 0 otherwise  
+  3. Merging rows into single category:
+  
+<center><p style="text-align:left"> (a) __`workclass`__ : "never worked" and "without pay" are merged into a category "unpaid". State-gov and Local-gov can also be categorised under "local-gov".
+(b) __`marital_status`__: "separated", "divorced" and "widowed" into a category "unmarried". The rest are "married" and "not_married"</p></center>
+ 
+<br>
+
+```{r, message=FALSE}
+library(dplyr, warn.conflicts = FALSE)
+newadult <- filter(adult,!workclass=="?" & !occupation=="?" & !native.country=="?")
+dim(newadult) #dimension of our data
+newadult$income <- as.numeric(newadult$income)
+newadult$income <- newadult$income-1 #changing input to be binary 0 and 1
+
+```
+
+```{r}
+#merging those who never worked and without pay into "Unpaid"
+unpaid <- function(work)
+{
+  work<-as.character(work)
+  if(work=='Never-worked' | work=='Without-pay')
+  {
+return('Unpaid')
+  }
+else{
+return(work)
+}
+}
+#grouping local and state gov workers together
+employer <- function(work)
+{
+  work<-as.character(work)
+  if(work=='State-gov'| work=='Local-gov')
+  {
+return('Local-gov')
+  }
+else{
+return(work)
+}
+}
+newadult$workclass <- sapply(newadult$workclass,unpaid)
+newadult$workclass <- sapply(newadult$workclass,employer)
+table(newadult$workclass)
+```
+
+```{r}
+#merging marital status into Married, Unmarried and Never-married
+unmarried <- function(married)
+{
+  married <- as.character(married)
+  if (married=='Divorced' | married=='Widowed' | married=='Separated'){
+    return('Unmarried')
+  }
+  else if(married== 'Never-married')
+  {
+    return(married)
+  }
+    else
+      {
+      return('Married')
+      }
+}
+newadult$marital.status <- sapply(newadult$marital.status, unmarried)
+table(newadult$marital.status)
+```
+
+
+<br>
+The data has now been manipulated to remove rows unknonwn values, and to change columb __`income`__ to have binary values of 0’s and 1’s. More importantly, some of the variables in our data (particularly under attributes __`workclass`__ and __`marital status`__) have been merged to make it easier to work with.
+
+What I have remained is 45222 instances with 15 different attributes. 
+
+Next, how our continuous variable is distributed across the sample will be explored
+
+<br>
+
+```{r}
+library(ggplot2)
+cont_var <- select_if(newadult, is.integer)
+summary(cont_var) #summary on our continuous variables
+```
+
+<br>
+
+Plotting a histogram for all our continuous variables.  
+
+<br>
+
+```{r, fig.align="center", fig.width=8, fig.height=6, fig.cap= "__Figure__: Here I see histograms for all my continuous variables"}
+par(mfrow=c(3,2)) #histogram for all cont variables
+hist(cont_var$age, main = "Age")
+hist(cont_var$educational.num, main = "Education Years")
+hist(cont_var$hours.per.week, main = "Hours Per Week")
+hist(cont_var$fnlwgt, main = "fnlwgt")
+hist(cont_var$capital.gain, main = "Capital Gain")
+hist(cont_var$capital.loss, main = "Capital Loss")
+```
+
+<br>
+
+Looking at __correlation__ of my continuous variables with __`income`__ levels, and let's add some colour to it too! 
+
+
+```{r,message=FALSE, fig.align="center", fig.width=8, fig.height=6, fig.cap= "__Figure__: Autocorrelation matrix of all continuous variable on income"}
+continuous_variable <- newadult %>% select(age, fnlwgt, educational.num, capital.gain, capital.loss,hours.per.week, income)
+library("corrplot")
+corr_cont <- cor(continuous_variable)
+corrplot(corr_cont, method = "color",
+         order = "hclust", 
+         addCoef.col = "black", 
+         tl.col = "black", tl.srt = 45)
+```
+
+<br>
+
+From the correlation matrix, I can see that the variable __`educational.num`__ has the highest correlation coefficient to "income" followed by __`age`__, __`hours per week`__, __`capital.gain`__ and __`capital.loss`__
+
+Now I would like to split my data into 2 parts: __`Training`__ set and __`Test`__ set.
+What this is doing is, my training set is the one where I train and try my best to fit the model, and this where I essentially fit my parameters. Now for the __`Test`__ set is what I will use as a benchmark to assess the performance of my model. 
+
+I want to make my model robust, thus I will split the data equally or into half which I believe to retain the quality and characteristics of training and test data. 
+
+```{r}
+bigtrain.size <- nrow(newadult)/2
+wholetrain <-sample(1:nrow(newadult), bigtrain.size)
+mothertrain <- newadult[wholetrain,]
+mothertest <- newadult[-wholetrain,]
+train_size <- nrow(continuous_variable)/2
+train <-  sample(1:nrow(continuous_variable), train_size)
+mytrain <-  continuous_variable[train, ]
+mytest <-  continuous_variable[-train, ]
+```
+
+<br>
+
+******
+
+
+# Models {#modeling}
+
+## Frequentist Linear Regression
+Now this is the most basic form of regression, where I assume that the relationship of predictors to the target variable __`income`__ is linear.
+
+I will fit a linear model using Least Squares on my training set. Test error that I am observing here is the Mean Square Error (MSE)
+
+```{r, message= FALSE, warning=FALSE}
+linear_fit <- lm(income~., data=mytrain)
+linear_pred <- predict(linear_fit, mytest)
+linear_MSE <- mean((mytest[, "income"] - linear_pred)^2)
+linear_MSE
+summary(linear_fit)
+linear_glm <-glm(income~., data=mytrain, family = binomial(link = "logit"))
+round(coef(summary(linear_glm)),3)
+```
+
+In my output summary, I can see the signs '***' which indicates that all my variables are important in my model. I can see that the p-values are very small. However p-values for frequentist may be a little bit awkward as they don't really infer that probability a hypothesis is exactly true.  This is one of the reasons why people look over to a Bayesian approach.
+
+```{r, fig.align="center"}
+qqnorm(linear_fit$residuals, col = "blue")
+qqline(linear_fit$residuals, col = "red")
+```
+
+## Bayesian Linear Regression using `rstanarm`
+
+
+```{r, warning=FALSE, message=FALSE}
+library(rstan)
+library(rstanarm)
+library(bayesplot)
+options(mc.cores = parallel::detectCores())
+```
+
+
+$$
+p(\theta|X,y) = \displaystyle \frac{p(\theta) p(y|X,\theta)}{\int p(\theta) p(y|X,\theta)}
+$$
+
+$p(\theta|X,y)$ is the Posterior Distribution where it is made up of $p(\theta)$ which is the prior and $p(y|X,\theta)$ which is the likelihood. 
+
+
+### Steps:  
+1. Specify probability model, where I will make `rstanarm` do this for us where they will include default priors that works pretty well in many cases  
+2. Sampling from posterior distribution. I will approach this using MCMC   
+3. Evaluate model  
+4. Inference  
+
+Now let's specify my model, where posterior is written to be proportional to the mixture of both prior and likelihood.
+
+$$
+f(\alpha,\beta_1,\beta_2,\beta_3,\beta_4,\beta_5,\beta_6|{y},{X})\propto f(\alpha)f(\beta_1) f(\beta_2)f(\beta_3)f(\beta_4)f(\beta_5)f(\beta_6) \times \prod_{i=1}^T g^{-1}(\eta)^{y_i}(1-g^{-1}(\eta_i))^{n_i-y_i}
+$$
+<br>
+where $\eta_i = \alpha+\beta_1age_i+\beta_2fnlwgt_i+\beta_3educational.num_i+\beta_4capital.gain_i+\beta_5capital.loss_i+\beta_6hours.per.week_i$ is my linear predictor. Since my response variable __`income`__ has a binomial likelihood I'll use the inverse link function $p = g^{-1}(\eta_i)$ and I assume CDF in my case is the standard logistic CDF $g^{-1}(\eta_i)= \frac{1}{1+e^{\eta_i}}$
+<br>
+
+### Draw from posterior
+Bayesian combines prior information (what I believe before) on my parameters with my outcomes/likelihood. Using `rstanarm` I can make Bayesian estimation much much easier.  
+
+```{r, warning=FALSE, message=FALSE} 
+prior_dist <- student_t(df=7, location = 0, scale = 2.5)
+posterior_draw <- stan_glm(income~., data= continuous_variable, family= binomial(link="logit"),prior = prior_dist,prior_intercept = prior_dist, seed=12345, QR=TRUE)
+posterior_draw
+round(coef(posterior_draw), 5)
+```
+
+
+Letting `rstanarm` to interpret the results, I can see the Bayesian point estimates, portrayed by the posterior medians though the figures are small. Median Absolute Deviation (MAD) from the median of my posterior can also be used to get strong estimator of the posterior deviation. 
+
+### Evaluate model
+
+```{r, fig.align="center", fig.cap= "__Figure__: Coefficients from posterior distribution"}
+plot(posterior_draw)
+```
+
+
+I can also get a Bayesian confidence interval (95%) for my variables.
+
+```{r}
+confidence_95 <- posterior_interval(posterior_draw, prob = 0.95, pars = c("age","fnlwgt", "educational.num", "capital.gain", "capital.loss", "hours.per.week"))
+round(confidence_95, 5)
+```
+
+```{r, fig.align="center", fig.cap= "__Figure__: Traceplots of all the values that was drawn from MCMC"}
+prior_summary(posterior_draw) #summary of prior distribution used for parameter in model
+summary(posterior_draw)
+stan_trace(posterior_draw)
+summary(posterior_draw$residuals) #summary of residual values of posterior
+summary(posterior_draw$fitted.values) #summary of fitted values of posterior
+```
+
+
+```{r,fig.align="center", fig.cap= "__Figure__: Histogram of coefficients drawn from posterior from all chains available"}
+mcmc_hist(posterior_draw) #histogram of coefficients drawn from posterior from all chains
+```
+
+```{r, fig.align="center", fig.cap= "__Figure__: Overlay of kernel density plots of posterior draws from all chains"}
+mcmc_dens_overlay(posterior_draw)     #plots kernel density from posterior
+```
+
+## Ridge Regression
+
+Ridge regression essentially is an extension of a linear regression. Also called *regularisation* , I use it to approach the problem of multicollinearity. What I do is I add a penalty parameter $\lambda$ so that I can penalise the model if it gets too complex, as of course I love simplicity.
+
+Now let's fit a ridge regression model on my training set. First, I gotta pick my penalty parameter $\lambda$
+```{r, message= FALSE, warning=FALSE}
+library(glmnet)
+train_matrix <- model.matrix(income~., data=mytrain)
+test_matrix <- model.matrix(income~., data=mytest)
+lambda <-  10^ seq(4, -2, length = 100)
+ridge_model <-  cv.glmnet(train_matrix, mytrain[, "income"], 
+                        alpha = 0, lambda = lambda, thresh = 1e-12)
+lambda_optimal<-  ridge_model$lambda.min
+lambda_optimal
+```
+The lambda that has emerged as optimal is 0.01, which I'll utilise when developing my ridge regression model. 
+
+First, let's check the MSE of my ridge regression. 
+
+```{r}
+ridge_predict <- predict(ridge_model, newx = test_matrix, s = lambda_optimal)
+ridge_error<-mean((mytest[,"income"] - ridge_predict)^2)
+ridge_error
+```
+
+Let's also have a look at my ridge regression coefficients
+```{r, fig.align="center", fig.cap= "__Figure__: Plot of MSE"}
+coef_ridge <- glmnet(model.matrix(income~. , data=continuous_variable),
+                     continuous_variable[,"income"], alpha=0, lambda=lambda_optimal)
+predict(coef_ridge, s= lambda_optimal, type = "coefficients")
+plot(ridge_model)
+```
+
+
+## Lasso Regression
+Lasso (not lassi the delicious drink) Regression is also a branch of linear regression. What I do when running a lasso procedure is I aim to shrink the data values towards some central point. This process promotes simple and sparse models (e.g. models with less parameters)
+
+This could improve my prediction accuracy and interpretability of my model.
+
+```{r}
+lasso_model <- cv.glmnet(train_matrix , mytrain[, "income"],
+                         alpha=1, lambda = lambda, thresh=1e-12)
+lambda_best <- lasso_model$lambda.min
+lambda_best
+```
+Again, I've got 0.01 as my best pick for $\lambda$ !
+```{r}
+lasso_predict <- predict(lasso_model, newx=test_matrix, s=lambda_best)
+lasso_MSE<- mean((mytest[,"income"]-lasso_predict)^2)
+lasso_MSE
+```
+
+```{r, fig.align="center"}
+lasso_model <- glmnet(model.matrix(income~., data=continuous_variable),
+                        continuous_variable[,"income"], alpha=1)
+lassoglm_predict<-predict(lasso_model, s= lambda_best, type = "coefficients")
+plot(lasso_model)
+```
+
+
+
+
+## Linear Discriminant Analysis
+
+Imagine if I have a data with multiple dimensions, LDA optimises this problem of having too many dimensions by reducing the dimensions.
+
+Run LDA on my training data to predict`income` using variables that seem to have the biggest relationship with `income`.
+
+Error on LDA:
+
+```{r, warning=FALSE, message=FALSE}
+#fitting LDA on training set and predicting
+#Then check out the error
+library(MASS)
+lda_fit <- lda(income~., data=mytrain)
+lda_predict <- predict(lda_fit, data=mytest)
+mytest0 <- rep(0, length(mytest$income))
+lda_error<- mean(lda_predict$class!=mytest0)
+lda_error
+```
+<br>
+
+******
+
+# Comparing Model Errors & Summary {#errors}
+
+
+```{r, message=FALSE}
+library(kableExtra)
+library(knitr)
+library(dplyr)
+options(knitr.table.format = "html") 
+coef_error_linearglm <- coef(summary(linear_glm))[,c("Estimate", "Std. Error")]
+coef_error_Bayes <- cbind(Median = coef(posterior_draw), MAD_SD = se(posterior_draw))
+combine_all <- cbind(coef_error_linearglm, coef_error_Bayes)
+combine_all
+```
+```{r}
+kable(combine_all) %>%
+  kable_styling(full_width = T) %>%
+  add_header_above(c(" " = 1, "FREQUENTIST" = 2, "BAYESIAN" = 2)) %>%
+  add_header_above(c(" ", "MODEL ERRORS" = 4))
+
+```
+
+Putting the _coefficients_ and _errors_ side by side for the __Frequentist__ and __Bayesian__, evidently I see for every single variables, errors under Bayesian is lower and the coefficients don't run too far from each other. 
+
+
+```{r}
+linear_errors <- cbind(lda_error, linear_MSE, lasso_MSE)
+linear_errors
+```
+
+Comparing directly the errors for __LDA__, __Frequentist__, __Lasso__, LDA provides the least error while Lasso provides the biggest error. 
+
+
+******
+
+# References {#refer}
+
+Ronny Kohavi and Barry Becker (1996). UCI Machine Learning Repository. [Adult Data Set](http://archive.ics.uci.edu/ml/datasets/Adult){target="_blank"}
+
+
+Jonah Gabry and Ben (2019).  [How to Use the rstanarm Package](https://mc-stan.org/rstanarm/articles/rstanarm.html){target="_blank"}
+
+Hao Zhu (2019). [Create Awesome HTML Table with knitr::kable and kableExtra](https://cran.rstudio.com/web/packages/kableExtra/vignettes/awesome_table_in_html.html#overview){target="_blank"}
+
+Kostas Kalogeropoulos (2019) [ST308 Bayesian Inference](https://kostaskalog.github.io/lse-st308/){target="_blank"}
+
+Anthony Ayebiahwe (2016) [Data Cleaning Project](https://rstudio-pubs-static.s3.amazonaws.com/296518_b3035d35b9634ed2ba19fc7bf63b50ca.html){target="_blank"}
+
